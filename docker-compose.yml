@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: . # Updated from '.'
+      dockerfile: Dockerfile
+    container_name: taskflow-backend
+    ports:
+      - "3006:3006"
+    environment:
+      - NODE_ENV=production
+      - DB=${DB}
+      - PORT=${PORT}
+      - SAUCE=${SAUCE}
+    volumes:
+      - ./logs:/app/logs
+      - ./backend-env:/app/.env
+    restart: always
+    networks:
+      - taskflow-network
+
+networks:
+  taskflow-network:

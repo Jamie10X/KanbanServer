@@ -1,98 +1,117 @@
+// routes/dashboard.js
 const express = require('express');
 const router = express.Router();
-require('dotenv').config();
-const sauce = process.env.sauce;
 const jwt = require('jsonwebtoken');
 const Task = require('../models/Task');
+require('dotenv').config();
 
-router.post('/task', async (req,res)=>{
-    const {task, desc, start, finish, color, status, token} = req.body;
+const sauce = process.env.sauce;
+
+// Middleware to verify token
+const verifyToken = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+        return res.status(403).json({ message: 'Authorization header missing' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(403).json({ message: 'Token missing in authorization header' });
+    }
+
     try {
-        
-        if(!token) return res.status(403).json({message:'token absent'});
-        const decoded = jwt.decode(token, sauce);
-        
-        if(!decoded.id) return res.status(403).json({message:'id absent'});
-        const newtask = new Task({
+        const decoded = jwt.verify(token, sauce);
+        req.userId = decoded.id;
+        next();
+    } catch (error) {
+        console.error('Token verification failed:', error);
+        return res.status(403).json({ message: 'Invalid token' });
+    }
+};
+
+// Create a new task
+router.post('/task', verifyToken, async (req, res) => {
+    const { task, desc, start, finish, color, status } = req.body;
+    try {
+        const newTask = new Task({
             task,
             desc,
             start,
             finish,
             color,
             status,
-            creator: decoded.id
+            creator: req.userId,
         });
-        const newone = await newtask.save();
-        res.status(200).json({message:'task created', task:newone});
+        const savedTask = await newTask.save();
+        res.status(200).json({ message: 'Task created successfully', task: savedTask });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({message:'something happened while creating the task'});
+        console.error('Error creating task:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-router.post('/status', async (req,res)=>{
-    const {id, status, token} = req.body;
+// Get all tasks for the logged-in user
+router.get('/tasks', verifyToken, async (req, res) => {
     try {
-        if(!token) return res.status(403).json({message:'token absent'});
-        const decoded = jwt.decode(token, sauce);
-        if(!decoded.id) return res.status(403).json({message:'id absent'});
-        const modified = await Task.findByIdAndUpdate(id, { status });
-        res.status(200).json({modified});
+        const tasks = await Task.find({ creator: req.userId });
+        res.status(200).json({ tasks });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({message:'something happened while creating the task'});
-    }
-});
-router.post('/all', async (req,res)=>{
-    const {token} = req.body;
-    try {
-        if(!token) return res.status(403).json({message:'token absent'});
-        const decoded = jwt.decode(token, sauce);
-        if(!decoded.id) return res.status(403).json({message:'id absent'});
-       const tasks = await Task.find({creator:decoded.id});
-        res.status(200).json({tasks});
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({message:'something happened while getting all tasks'});
-    }
-});
-router.post('/delete', async (req, res) => {
-    const { id, token } = req.body;
-    try {
-        // Verify the token
-        if (!token) return res.status(403).json({ message: 'token absent' });
-        const decoded = jwt.decode(token, sauce);
-        if (!decoded.id) return res.status(403).json({ message: 'id absent' });
-        // Find and delete the task
-        const deletedTask = await Task.findOneAndDelete({ _id: id, creator: decoded.id });
-        console.log(deletedTask)
-        if (!deletedTask) {
-            return res.status(404).json({ message: 'Task not found or unauthorized' });
-        }
-
-        res.status(200).json({ message: 'Task deleted successfully', deletedTask });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Something happened while deleting the task' });
+        console.error('Error fetching tasks:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
 
-router.post('/modify', async (req,res)=>{
-    const {selectedTask, token} = req.body;
+// Update a task
+router.put('/task/:id', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    const updates = req.body;
     try {
-        if(!token) return res.status(403).json({message:'token absent'});
-        const decoded = jwt.decode(token, sauce);
-        if(!decoded.id) return res.status(403).json({message:'id absent'});
-        const modified = await Task.findByIdAndUpdate(selectedTask._id, {
-            task:selectedTask.task, desc:selectedTask.desc, start:selectedTask.start, 
-            finish:selectedTask.finish, color:selectedTask.color, status:selectedTask.status
-        });
-        res.status(200).json({modified});
+        const updatedTask = await Task.findOneAndUpdate(
+            { _id: id, creator: req.userId },
+            updates,
+            { new: true }
+        );
+        if (!updatedTask) return res.status(404).json({ message: 'Task not found or unauthorized' });
+        res.status(200).json({ message: 'Task updated successfully', task: updatedTask });
     } catch (error) {
-        console.error(error);
-        res.status(500).json({message:'something happened while modifying the task'});
+        console.error('Error updating task:', error);
+        res.status(500).json({ message: 'Internal server error' });
     }
 });
+
+// Delete a task
+router.delete('/task/:id', verifyToken, async (req, res) => {
+    const { id } = req.params;
+    try {
+        const deletedTask = await Task.findOneAndDelete({ _id: id, creator: req.userId });
+        if (!deletedTask) return res.status(404).json({ message: 'Task not found or unauthorized' });
+        res.status(200).json({ message: 'Task deleted successfully', task: deletedTask });
+    } catch (error) {
+        console.error('Error deleting task:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+router.get('/search', verifyToken, async (req, res) => {
+    const { status, startDate, endDate, keyword } = req.query;
+
+    // Build query dynamically
+    const query = { creator: req.userId };
+    if (status) query.status = status;
+    if (startDate) query.start = { $gte: new Date(startDate) };
+    if (endDate) query.finish = { $lte: new Date(endDate) };
+    if (keyword) query.task = { $regex: keyword, $options: 'i' }; // Case-insensitive search
+
+    try {
+        const tasks = await Task.find(query);
+        res.status(200).json({ tasks });
+    } catch (error) {
+        console.error('Error searching tasks:', error);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 module.exports = router;
+
 
 
