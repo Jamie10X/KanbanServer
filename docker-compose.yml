@@ -3,7 +3,7 @@ version: '3.8'
 services:
   backend:
     build:
-      context: . # Updated from '.'
+      context: .
       dockerfile: Dockerfile
     container_name: taskflow-backend
     ports:
@@ -13,6 +13,8 @@ services:
       - DB=${DB}
       - PORT=${PORT}
       - SAUCE=${SAUCE}
+    env_file:
+      - .env
     volumes:
       - ./logs:/app/logs
       - ./backend-env:/app/.env
