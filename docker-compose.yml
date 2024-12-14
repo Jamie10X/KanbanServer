@@ -12,9 +12,8 @@ services:
       - NODE_ENV=production
       - DB=${DB}
       - PORT=${PORT}
-      - SAUCE=${SAUCE}
     env_file:
-      - .env
+      - tests/.env
     volumes:
       - ./logs:/app/logs
       - ./backend-env:/app/.env
