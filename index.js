@@ -11,10 +11,6 @@ const port = process.env.PORT || 3006;
 const db = process.env.DB;
 const sauce = process.env.sauce;
 
-app.get('/healthcheck', (req, res) => {
-    res.status(200).send('Server is healthy');
-});
-
 // Validate environment variables
 if (!db || !sauce) {
     console.error('Error: Missing environment variables. Ensure .env is properly configured.');
