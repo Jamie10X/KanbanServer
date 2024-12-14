@@ -8,7 +8,6 @@ require('dotenv').config();
 
 const sauce = process.env.sauce;
 
-// Sign-up route
 router.post('/signup', async (req, res) => {
     const { username, email, password } = req.body;
     try {
@@ -22,8 +21,7 @@ router.post('/signup', async (req, res) => {
             return res.status(403).json({ message: 'Email is already registered' });
         }
 
-        const hashedPassword = await bcrypt.hash(password, 10); // Hash password
-        const user = new User({ username, email, password: hashedPassword });
+        const user = new User({ username, email, password }); // Plain-text password
         await user.save();
         res.status(200).json({ message: 'Signup successful' });
     } catch (error) {
@@ -32,21 +30,32 @@ router.post('/signup', async (req, res) => {
     }
 });
 
-// Sign-in route
 router.post('/signin', async (req, res) => {
     const { email, password } = req.body;
     try {
+        if (!email || !password) {
+            return res.status(400).json({ message: 'Email and password are required' });
+        }
+
         const user = await User.findOne({ email });
         if (!user) {
+            console.log('User not found:', email);
             return res.status(404).json({ message: 'User not found' });
         }
 
-        const isMatch = await bcrypt.compare(password, user.password); // Compare hashed passwords
+        console.log('Submitted Password:', password);
+        console.log('Stored Hashed Password:', user.password);
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        console.log('Password Match Result:', isMatch);
+
         if (!isMatch) {
             return res.status(403).json({ message: 'Invalid credentials' });
         }
 
         const token = jwt.sign({ id: user._id }, sauce, { expiresIn: '5h' });
+        console.log('Generated JWT:', token);
+
         res.status(200).json({ token, user: user.username });
     } catch (error) {
         console.error('Error during signin process:', error);
